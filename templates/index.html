@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8" />
+    <title>Diagnóstico de Alzheimer com IA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            max-width: 900px;
+            margin: auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+
+        h1 {
+            text-align: center;
+            color: #444;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .image-preview {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .image-preview img {
+            width: 300px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        .explicacao-box {
+            background-color: #fff;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            font-size: 16px;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        /* Loading barra fixa no canto superior direito */
+        #loading-container {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 250px;
+            background-color: #ccc;
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 0 8px rgba(0,0,0,0.2);
+            overflow: hidden;
+            z-index: 9999;
+            display: none;
+        }
+
+        #loading-bar {
+            height: 20px;
+            background-color: #007bff;
+            width: 0%;
+            border-radius: 6px;
+            transition: width 0.3s ease;
+        }
+
+        #loading-progress {
+            text-align: center;
+            font-weight: bold;
+            color: #222;
+            margin-top: 4px;
+            user-select: none;
+        }
+
+        button {
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <h1>Diagnóstico de Alzheimer com Inteligência Artificial</h1>
+
+    <div class="upload-section">
+        <input type="file" id="imagemInput" accept="image/*" />
+        <button onclick="enviarImagem()">Analisar Imagem</button>
+    </div>
+
+    <div class="image-preview" id="preview">
+        <!-- Imagem original e Grad-CAM aparecerão aqui -->
+    </div>
+
+    <div id="explicacao-container" class="explicacao-box">
+        <!-- Explicação da IA será inserida aqui -->
+    </div>
+
+    <div id="loading-container">
+        <div id="loading-bar"></div>
+        <div id="loading-progress">0%</div>
+    </div>
+
+    <script>
+        // Limpa conteúdo anterior assim que usuário seleciona um novo arquivo
+        document.getElementById('imagemInput').addEventListener('change', () => {
+            document.getElementById('preview').innerHTML = '';
+            document.getElementById('explicacao-container').innerHTML = '';
+        });
+
+        function mostrarBarraLoading() {
+            const container = document.getElementById('loading-container');
+            const bar = document.getElementById('loading-bar');
+            const progress = document.getElementById('loading-progress');
+
+            let porcentagem = 0;
+            container.style.display = 'block';
+
+            const interval = setInterval(() => {
+                if (porcentagem >= 90) {
+                    clearInterval(interval);
+                } else {
+                    porcentagem += Math.random() * 10;
+                    if (porcentagem > 90) porcentagem = 90;
+                    bar.style.width = `${porcentagem}%`;
+                    progress.textContent = `${Math.floor(porcentagem)}%`;
+                }
+            }, 200);
+
+            return function finalizarBarra() {
+                clearInterval(interval);
+                bar.style.width = '100%';
+                progress.textContent = '100%';
+
+                setTimeout(() => {
+                    container.style.display = 'none';
+                    bar.style.width = '0%';
+                    progress.textContent = '0%';
+                }, 1000);
+            };
+        }
+
+        function enviarImagem() {
+            const input = document.getElementById('imagemInput');
+            const preview = document.getElementById('preview');
+            const explicacaoDiv = document.getElementById('explicacao-container');
+
+            // Limpar conteúdo anterior ao enviar
+            explicacaoDiv.innerHTML = '';
+            preview.innerHTML = '';
+
+            if (input.files.length === 0) {
+                alert("Por favor, selecione uma imagem.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', input.files[0]);
+
+            // Mostrar imagem original imediatamente
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.alt = "Imagem Original";
+                preview.appendChild(img);
+            };
+            reader.readAsDataURL(input.files[0]);
+
+            const finalizar = mostrarBarraLoading();
+
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                finalizar();
+
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                if (data.heatmap) {
+                    const heatmap = document.createElement('img');
+                    heatmap.src = data.heatmap;
+                    heatmap.alt = "Grad-CAM";
+                    preview.appendChild(heatmap);
+                }
+
+                explicacaoDiv.innerHTML = data.info_html;
+
+                // Alerta SweetAlert2 ao concluir análise
+                Swal.fire({
+                    title: "Ok!",
+                    text: "Análise concluída com sucesso.",
+                    icon: "success",
+                    confirmButtonText: "Fechar"
+                });
+            })
+            .catch(err => {
+                finalizar();
+                console.error(err);
+                alert("Erro ao processar a imagem.");
+            });
+        }
+    </script>
+</body>
+</html>
